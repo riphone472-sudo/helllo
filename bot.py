@@ -1,113 +1,88 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    Filters,
+    CallbackContext
+)
 from PIL import Image, ImageDraw, ImageFont
 import random
-import io
-import math
+import os
 
-bot=TOKEN = "8001601776:AAEdp0gsAl_mjSlZs5yWEvoyFIgFUGo5-fM"
+TOKEN = "8001601776:AAEdp0gsAl_mjSlZs5yWEvoyFIgFUGo5-fM"
 
-users = {}
+# foydalanuvchi kodlarini saqlash
+user_codes = {}
 
-def generate_code_image(code: str):
-    width, height = 600, 300
-    bg_color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-    img = Image.new("RGB", (width, height), bg_color)
+def generate_captcha(user_id):
+    code = str(random.randint(10000, 99999))
+    user_codes[user_id] = code
+
+    img = Image.new("RGB", (250, 100), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     try:
-        font = ImageFont.truetype("arial.ttf", 80)
+        font = ImageFont.truetype("arial.ttf", 48)
     except:
         font = ImageFont.load_default()
 
-    digit_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+    draw.text((40, 20), code, font=font, fill=(0, 0, 0))
 
-    x = 50
-    for ch in code:
-        angle = random.randint(-45, 45)
-        char_img = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
-        char_draw = ImageDraw.Draw(char_img)
-        font_size_variation = random.randint(70, 90)
-        try:
-            font_var = ImageFont.truetype("arial.ttf", font_size_variation)
-        except:
-            font_var = font
-        char_draw.text((10, 0), ch, font=font_var, fill=digit_color)
-        rotated = char_img.rotate(angle, expand=1)
-        img.paste(rotated, (x, random.randint(50, 130)), rotated)
-        x += random.randint(80, 100)
+    filename = f"captcha_{user_id}.png"
+    img.save(filename)
 
-    for _ in range(25):
-        draw.line(
-            (
-                random.randint(0, width),
-                random.randint(0, height),
-                random.randint(0, width),
-                random.randint(0, height)
-            ),
-            fill=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)),
-            width=random.randint(1, 3)
-        )
+    return filename, code
 
-    for _ in range(300):
-        draw.point(
-            (random.randint(0, width), random.randint(0, height)),
-            fill=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-        )
+def start(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    username = update.message.from_user.first_name
 
-    bio = io.BytesIO()
-    bio.name = "captcha.png"
-    img.save(bio, "PNG")
-    bio.seek(0)
-    return bio
+    file, code = generate_captcha(user_id)
 
-def get_buttons():
-    keyboard = [
-        [InlineKeyboardButton("⚜️ОПЕРАТОР ТАШКЕНТ⚜️", url="https://t.me/tw")],
-        [InlineKeyboardButton("⚜️ТЕХ Поддержка⚜️", url="https://t.me/evcn")],
-        [InlineKeyboardButton("🔱ОПЕРАТОР ПРИГОРОД🔱", url="https://t.me/yzc")],
-        [InlineKeyboardButton("🔱ТЕХ Поддержка ПРИГОРОД🔱", url="https://t.me/yzb")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    update.message.reply_photo(
+        photo=open(file, "rb"),
+        caption=f"Salom {username} 👋\n\nKodini kiriting:"
+    )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    name = user.first_name or "User"
+    os.remove(file)
 
-    code = str(random.randint(10000, 99999))
-    users[user_id] = {"verified": False, "code": code, "name": name}
+def check_code(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    text = update.message.text
 
-    image = generate_code_image(code)
-
-    message_text = f"Привет, {name}. Пожалуйста, решите капчу с цифрами на этом изображении, чтобы убедиться, что вы человек."
-
-    await update.message.reply_photo(photo=image, caption=message_text)
-
-async def check_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id not in users:
+    if user_id not in user_codes:
+        update.message.reply_text("Iltimos /start bosing")
         return
 
-    name = users[user_id]["name"]
-
-    if update.message.text == users[user_id]["code"]:
-        users[user_id]["verified"] = True
-        message_text = "⚡️Вас приветствует Tesla Shop⚡️\nЕсли вам нужна помощь с покупкой, пожалуйста, свяжитесь с оператором."
-        await update.message.reply_text(message_text, reply_markup=get_buttons())
+    if text == user_codes[user_id]:
+        keyboard = ReplyKeyboardMarkup(
+            [["1", "2", "3", "4"]],
+            resize_keyboard=True
+        )
+        update.message.reply_text(
+            "✅ To‘g‘ri!\n\nTugmalarni tanlang:",
+            reply_markup=keyboard
+        )
+        del user_codes[user_id]
     else:
-        new_code = str(random.randint(10000, 99999))
-        users[user_id]["code"] = new_code
-        image = generate_code_image(new_code)
-        message_text = f"Привет, {name}. Пожалуйста, решите капчу с цифрами на этом изображении, чтобы убедиться, что вы человек."
-        await update.message.reply_photo(photo=image, caption=message_text)
+        update.message.reply_text("❌ Noto‘g‘ri kod. Qayta urinib ko‘ring.")
+        file, _ = generate_captcha(user_id)
+        update.message.reply_photo(
+            photo=open(file, "rb"),
+            caption="Yangi kodni kiriting:"
+        )
+        os.remove(file)
 
 def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_code))
-    app.run_polling()
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, check_code))
+
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
